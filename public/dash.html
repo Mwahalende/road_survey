@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Surveyor Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f8f9fa;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .photo-card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+    .photo-row {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .photo-card img.photo {
+      width: 100%;
+      max-width: 400px;
+      height: auto;
+      object-fit: cover;
+      border-right: 1px solid #eee;
+    }
+    .photo-info {
+      padding: 15px;
+      flex: 1;
+      min-width: 250px;
+    }
+    .photo-info p {
+      margin: 6px 0;
+      font-size: 14px;
+    }
+    .map-frame {
+      width: 100%;
+      height: 250px;
+      border: none;
+    }
+    .status {
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      display: inline-block;
+      font-size: 13px;
+    }
+    .approved {
+      background: #28a745;
+      color: white;
+    }
+    .rejected {
+      background: #6f42c1;
+      color: white;
+    }
+    .cancelled {
+      background: #dc3545;
+      color: white;
+    }
+    button.repeat-btn {
+      background: #007bff;
+      color: white;
+      padding: 8px 14px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button.repeat-btn:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h1>Submitted Reports</h1>
+  <div id="photosContainer">Loading reports...</div>
+
+  <script>
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      alert('Not logged in. Redirecting to login page...');
+      window.location.href = 'serveryerlogin.html';
+    }
+
+    async function loadPhotos() {
+      try {
+        const res = await fetch('/get-all-photos');
+        const data = await res.json();
+        const myPhotos = data.photos.filter(p => p.userId === userId);
+        renderPhotos(myPhotos);
+      } catch (err) {
+        document.getElementById('photosContainer').innerHTML = 'Failed to load reports.';
+      }
+    }
+
+    function renderPhotos(photos) {
+      const container = document.getElementById('photosContainer');
+      container.innerHTML = '';
+      if (photos.length === 0) {
+        container.innerHTML = '<p>No reports submitted yet.</p>';
+        return;
+      }
+
+      photos.forEach(photo => {
+        const loc = photo.location || {};
+        const lat = loc.latitude || 0;
+        const lng = loc.longitude || 0;
+        const mapURL = `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`;
+
+        let statusClass = '';
+        if (photo.approvalStatus === 'approved') statusClass = 'approved';
+        else if (photo.approvalStatus === 'rejected') statusClass = 'rejected';
+        else if (photo.approvalStatus === 'cancelled') statusClass = 'cancelled';
+
+        const div = document.createElement('div');
+        div.className = 'photo-card';
+        div.innerHTML = `
+          <div class="photo-row">
+            <img src="${photo.photoUrl}" class="photo" />
+            <div class="photo-info">
+              <p><strong>Road:</strong> ${photo.roadName}</p>
+              <p><strong>Damage Class:</strong> ${photo.damageClass}</p>
+              <p><strong>Comment:</strong> ${photo.comment}</p>
+              <p><strong>Location:</strong> ${loc.street}, ${loc.city}, ${loc.region}, ${loc.country}</p>
+              <p><strong>Coordinates:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
+              <p><strong>Time Submitted:</strong> ${photo.localTime}</p>
+              <p><strong>Status:</strong> <span class="status ${statusClass}">${photo.approvalStatus}</span></p>
+              <p><strong>Officer Comment:</strong> ${photo.officerComment || 'Pending...'}</p>
+              <p><strong>Contractor:</strong> ${photo.contractor || '-'}</p>
+              ${photo.approvalStatus === 'cancelled' ? '<button class="repeat-btn" onclick="location.href=\'serveryer.html\'">🔁 Repeat Project</button>' : ''}
+            </div>
+          </div>
+          <iframe class="map-frame" src="${mapURL}" loading="lazy"></iframe>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    loadPhotos();
+  </script>
+</body>
+</html>

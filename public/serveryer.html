@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Surveyor Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f2f5;
+      max-width: 600px;
+      margin: auto;
+    }
+    video, img {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 6px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 1em;
+    }
+    button {
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #218838;
+    }
+  </style>
+</head>
+<body>
+  <h2>Welcome, Surveyor</h2>
+
+  <video id="camera" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <img id="capturedPhoto" alt="Captured photo preview" />
+  <button id="captureBtn">Capture Photo</button>
+
+  <div id="locationInfo">Loading location...</div>
+
+  <form id="photoForm">
+    <input type="text" id="roadName" placeholder="Enter Street / Road Name" required />
+
+    <select id="damageClass" required>
+      <option value="">Select Damage Class</option>
+    </select>
+
+    <textarea id="comment" placeholder="Enter Comment" rows="4" required></textarea>
+
+    <button type="submit">Submit Damage Report</button>
+  </form>
+
+  <script>
+    const fullname = localStorage.getItem('fullname');
+    const email = localStorage.getItem('email');
+    const userId = localStorage.getItem('userId');
+
+    if (!userId) {
+      alert('You must log in first.');
+      window.location.href = 'serveryerlogin.html';
+    }
+
+    // Get camera stream
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('canvas');
+    const capturedPhoto = document.getElementById('capturedPhoto');
+    const captureBtn = document.getElementById('captureBtn');
+
+    let latitude = null, longitude = null, locationDetails = {};
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+      } catch (err) {
+        alert('Camera access denied: ' + err.message);
+      }
+    }
+
+    captureBtn.onclick = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      capturedPhoto.src = canvas.toDataURL('image/jpeg');
+    };
+
+    async function getLocation() {
+      const locDiv = document.getElementById('locationInfo');
+      if (!navigator.geolocation) {
+        locDiv.textContent = 'Geolocation not supported.';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(async pos => {
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`;
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          locationDetails = {
+            street: data.address.road || '',
+            city: data.address.city || data.address.town || data.address.village || '',
+            region: data.address.state || '',
+            country: data.address.country || ''
+          };
+          locDiv.textContent = `📍 ${locationDetails.street}, ${locationDetails.city}, ${locationDetails.region}, ${locationDetails.country} [${latitude.toFixed(5)}, ${longitude.toFixed(5)}]`;
+        } catch {
+          locDiv.textContent = `📍 [${latitude.toFixed(5)}, ${longitude.toFixed(5)}]`;
+        }
+      }, () => {
+        locDiv.textContent = 'Location access denied.';
+      });
+    }
+
+    async function loadDamageClasses() {
+      try {
+        const res = await fetch('/damage-class');
+        const data = await res.json();
+        const dropdown = document.getElementById('damageClass');
+        data.forEach(cls => {
+          const option = document.createElement('option');
+          option.value = cls.damageClass;
+          option.textContent = `${cls.damageClass} - ${cls.description} (${cls.repairCost.toLocaleString()} TZS)`;
+          dropdown.appendChild(option);
+        });
+      } catch (err) {
+        alert('Failed to load damage classes');
+      }
+    }
+
+    document.getElementById('photoForm').onsubmit = async (e) => {
+      e.preventDefault();
+
+      if (!capturedPhoto.src) {
+        return alert('Please capture a photo.');
+      }
+
+      const payload = {
+        userId,
+        fullname,
+        email,
+        imageData: capturedPhoto.src,
+        location: {
+          ...locationDetails,
+          latitude, longitude
+        },
+        roadName: document.getElementById('roadName').value,
+        damageClass: document.getElementById('damageClass').value,
+        comment: document.getElementById('comment').value,
+        localTime: new Date().toLocaleString()
+      };
+
+      const res = await fetch('/upload-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert('Photo submitted successfully!');
+        document.getElementById('photoForm').reset();
+        capturedPhoto.src = '';
+      } else {
+        alert(result.message || 'Submit failed.');
+      }
+    };
+
+    startCamera();
+    getLocation();
+    loadDamageClasses();
+  </script>
+</body>
+</html>

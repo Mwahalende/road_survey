@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manager Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    input, button {
+      padding: 8px;
+      font-size: 1em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      font-size: 14px;
+    }
+    th {
+      background: #e9ecef;
+    }
+    button.add-budget {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+    button.add-budget:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h2>Manager </h2>
+  <div class="controls">
+    <input type="date" id="filterDate" />
+    <input type="text" id="filterRoad" placeholder="Filter by Road/Street" />
+    <button onclick="applyFilter()">Filter</button>
+    <button onclick="exportCSV()">Export CSV</button>
+    <button onclick="exportPDF()">Export PDF</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Road Name</th>
+        <th>Damage Class</th>
+        <th>User ID</th>
+        <th>Capture Date</th>
+        <th>Stage</th>
+        <th>Area</th>
+        <th>Contractor</th>
+        <th>Budget</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="reportTable"></tbody>
+  </table>
+  <script>
+    const token = localStorage.getItem('token');
+    const userRole = localStorage.getItem('role');
+    let allReports = [];
+
+    if (!token || userRole !== 'manager') {
+      alert('Access denied.');
+      window.location.href = 'serveryerlogin.html';
+    }
+
+    async function loadReports() {
+      const res = await fetch('/get-all-photos');
+      const data = await res.json();
+      allReports = data.photos;
+      renderTable(allReports);
+    }
+
+    function determineStage(report) {
+      if (!report.approvalStatus || report.approvalStatus === 'pending') return 'Stage 1';
+      if (report.approvalStatus && !report.budget) return 'Stage 2';
+      if (report.budget) return 'Stage 3';
+      return '-';
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('reportTable');
+      tbody.innerHTML = '';
+      data.forEach((r, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.roadName || ''}</td>
+          <td>${r.damageClass || ''}</td>
+          <td>${r.userId || ''}</td>
+          <td>${new Date(r.dateCreated).toLocaleDateString()}</td>
+          <td>${determineStage(r)}</td>
+          <td>${r.location?.city || '-'}</td>
+          <td>${r.contractor || '-'}</td>
+          <td>${r.budget || '-'}</td>
+          <td>
+            <input type="number" id="budget-${index}" placeholder="Enter budget" style="width:100px;" />
+            <button class="add-budget" onclick="saveBudget('${r._id}', ${index})">Save</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function applyFilter() {
+      const dateVal = document.getElementById('filterDate').value;
+      const roadVal = document.getElementById('filterRoad').value.toLowerCase();
+      const filtered = allReports.filter(r => {
+        const matchDate = !dateVal || new Date(r.dateCreated).toISOString().split('T')[0] === dateVal;
+        const matchRoad = !roadVal || (r.roadName && r.roadName.toLowerCase().includes(roadVal));
+        return matchDate && matchRoad;
+      });
+      renderTable(filtered);
+    }
+
+    async function saveBudget(reportId, index) {
+      const input = document.getElementById(`budget-${index}`);
+      const budget = input.value.trim();
+      if (!budget) return alert('Enter a valid budget');
+
+      const res = await fetch(`/update-budget/${reportId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ budget })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert('Budget saved');
+        loadReports();
+      } else {
+        alert(result.message || 'Failed to save');
+      }
+    }
+
+    function exportCSV() {
+      let csv = 'Road,Class,User ID,Date,Stage,Area,Contractor,Budget\n';
+      allReports.forEach(r => {
+        csv += `"${r.roadName || ''}","${r.damageClass || ''}","${r.userId || ''}","${new Date(r.dateCreated).toLocaleDateString()}","${determineStage(r)}","${r.location?.city || '-'}","${r.contractor || '-'}","${r.budget || '-'}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'manager_report.csv';
+      link.click();
+    }
+
+    async function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let y = 10;
+      allReports.forEach((r, i) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 10;
+        }
+        doc.text(`${i + 1}) ${r.roadName} | ${r.damageClass} | ${r.userId}`, 10, y);
+        doc.text(`Stage: ${determineStage(r)} | Contractor: ${r.contractor || '-'} | Budget: ${r.budget || '-'}`, 10, y + 6);
+        y += 16;
+      });
+      doc.save('manager_report.pdf');
+    }
+
+    loadReports();
+  </script>
+</body>
+</html>

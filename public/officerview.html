@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Officer View Report</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f7f9fa;
+      max-width: 700px;
+      margin: auto;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    img {
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    iframe {
+      width: 100%;
+      height: 250px;
+      border: none;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+    .info p {
+      margin: 8px 0;
+      font-size: 15px;
+    }
+    textarea, input {
+      width: 100%;
+      margin: 10px 0;
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    .btns {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 12px;
+      font-weight: bold;
+      font-size: 15px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      color: white;
+    }
+    .approve { background: #28a745; }
+    .reject { background: #6f42c1; }
+    .cancel { background: #dc3545; }
+  </style>
+</head>
+<body>
+  <h2>Review Damage Reports</h2>
+  <div class="info" id="reportInfo">Loading...</div>
+
+  <textarea id="officerComment" placeholder="Enter your comment here" required></textarea>
+  <input type="text" id="contractor" placeholder="Contractor Name" required />
+
+  <div class="btns">
+    <button class="approve" onclick="submitDecision('approved')">Approve</button>
+    <button class="reject" onclick="submitDecision('rejected')">Reject</button>
+    <button class="cancel" onclick="submitDecision('cancelled')">Cancel</button>
+  </div>
+
+  <script>
+    const reportId = localStorage.getItem('viewReportId');
+    const token = localStorage.getItem('token');
+    const officerId = localStorage.getItem('userId');
+
+    if (!token || localStorage.getItem('role') !== 'officer') {
+      alert('Access denied.');
+      window.location.href = 'serveryerlogin.html';
+    }
+
+    let report;
+
+    async function loadReport() {
+      const res = await fetch('/get-all-photos');
+      const data = await res.json();
+      report = data.photos.find(p => p._id === reportId);
+
+      if (!report) {
+        document.getElementById('reportInfo').innerHTML = 'Report not found.';
+        return;
+      }
+
+      const loc = report.location || {};
+      const coords = `[${loc.latitude?.toFixed(5)}, ${loc.longitude?.toFixed(5)}]`;
+      const mapSrc = `https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&z=16&output=embed`;
+
+      document.getElementById('reportInfo').innerHTML = `
+        <img src="${report.photoUrl}" alt="Damage Photo" />
+        <p><strong>Surveyor:</strong> ${report.fullname} (${report.email})</p>
+        <p><strong>Road:</strong> ${report.roadName}</p>
+        <p><strong>Damage Class:</strong> ${report.damageClass}</p>
+        <p><strong>Comment:</strong> ${report.comment}</p>
+        <p><strong>Location:</strong> ${loc.street}, ${loc.city}, ${loc.region}, ${loc.country}</p>
+        <p><strong>Coordinates:</strong> ${coords}</p>
+        <p><strong>Submitted On:</strong> ${new Date(report.dateCreated).toLocaleString()}</p>
+        <iframe src="${mapSrc}" loading="lazy"></iframe>
+      `;
+    }
+
+    async function submitDecision(status) {
+      const comment = document.getElementById('officerComment').value.trim();
+      const contractor = document.getElementById('contractor').value.trim();
+
+      if (!comment || !contractor) {
+        return alert('Please fill in both comment and contractor name.');
+      }
+
+      const res = await fetch(`/officer-review/${reportId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({
+          approvalStatus: status,
+          officerComment: comment,
+          contractor,
+          validatedByOfficerId: officerId
+        })
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        alert('Report updated: ' + status);
+        window.location.href = 'officer.html';
+      } else {
+        alert(result.message || 'Failed to update report.');
+      }
+    }
+
+    loadReport();
+  </script>
+</body>
+</html>
