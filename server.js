@@ -10,7 +10,7 @@ const path = require('path');
 const app = express();
 
 // ======================= CONFIG =======================
-const MONGODB_URI = 'mongodb://127.0.0.1/road_survey';
+const MONGODB_URI = 'mongodb+srv://user1:malafiki@leodb.5mf7q.mongodb.net/?retryWrites=true&w=majority&appName=leodb';
 const JWT_SECRET = '8h2j3k5l9d7f0a1b3c4e6g7h';
 const EMAIL_USER = 'zumalipas@gmail.com';
 const EMAIL_PASS = 'xsds bimk ndlb vmrr';
